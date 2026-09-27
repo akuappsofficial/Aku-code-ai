@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aku Code AI</title>
+<meta name="description" content="Aku Code AI — browser-based coding assistant powered by Groq.">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><div class="logo">A</div><div><strong>Aku Code</strong><small>AI coding workspace</small></div></div>
+  <button id="newChat" class="new-chat">＋ New chat</button>
+  <div class="side-label">SESSIONS</div><div id="sessions" class="sessions"></div>
+  <nav>
+    <button class="nav active" data-page="workspace">⌘ <span>Workspace</span></button>
+    <button class="nav" data-page="settings">⚙ <span>Settings</span></button>
+    <button class="nav" data-page="about">ⓘ <span>About</span></button>
+  </nav>
+  <div class="side-foot">Runs in your browser<br><span>Groq-powered</span></div>
+</aside>
+<main>
+<header class="topbar"><div class="mobile-title">Aku Code</div><div id="status" class="status">Ready</div></header>
+<section id="workspacePage" class="page">
+  <div class="hero"><div><p class="eyebrow">AKU APPS</p><h1>Build with Aku Code.</h1><p>Describe what you want. Aku Code can reason about your project, edit files, and show the result in the browser.</p></div></div>
+  <div class="modebar"><span>Mode</span><button id="codeMode" class="mode active">Code</button><button id="chatMode" class="mode">Chat</button><div class="mode-note" id="modeNote">Edits workspace files and updates preview</div></div>
+  <div class="workspace">
+    <section class="panel files-panel"><div class="panel-head"><strong>Files</strong><button id="uploadBtn" class="icon-btn" title="Import ZIP">＋</button><input id="zipInput" type="file" accept=".zip" hidden></div><div id="fileList" class="file-list"></div><div class="file-foot"><button id="clearFiles" class="text-btn">Clear workspace</button></div></section>
+    <section class="panel chat-panel"><div id="messages" class="messages"></div><div class="composer-wrap"><div id="context" class="context"></div><form id="composer"><textarea id="prompt" rows="2" placeholder="Describe what you want to build…"></textarea><div class="composer-foot"><span id="composerHint">Enter to send · Shift+Enter for newline</span><div><button type="button" id="stopBtn" class="stop" hidden>Stop</button><button class="send" type="submit">Send ↑</button></div></div></form></div></section>
+    <section class="panel preview-panel"><div class="panel-head"><strong>Live preview</strong><span id="previewState">Ready</span></div><iframe id="preview" sandbox="allow-scripts"></iframe></section>
+  </div>
+</section>
+<section id="settingsPage" class="page hidden"><div class="card"><p class="eyebrow">SETTINGS</p><h2>Groq connection</h2><p class="muted">Your API key is used directly by this browser. GitHub Pages cannot safely expose GitHub Secrets to client-side JavaScript.</p><label>Groq API key<input id="groqKey" type="password" autocomplete="off" placeholder="gsk_…"></label><label class="check"><input id="rememberGroq" type="checkbox"> Save locally on this device</label><div class="actions"><button id="saveGroq" class="send">Save key</button><button id="clearGroq" class="text-btn">Clear key</button></div><p id="keyState" class="small"></p></div></section>
+<section id="aboutPage" class="page hidden"><div class="card"><p class="eyebrow">ABOUT</p><h2>Aku Code AI</h2><p class="muted">A lightweight open-source coding workspace built as a static GitHub Pages app. It uses Groq for inference, stores workspace state in your browser, supports ZIP imports, and renders web projects in a sandboxed preview.</p><div class="capabilities"><span>Groq streaming</span><span>Code / Chat</span><span>ZIP import</span><span>Live preview</span><span>Local sessions</span></div></div></section>
+</main></div>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script><script src="script.js?v=1"></script>
+</body></html>
