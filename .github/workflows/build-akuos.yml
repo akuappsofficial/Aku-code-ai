@@ -1,0 +1,78 @@
+name: Build AkuOS ISO
+
+on:
+  push:
+    paths:
+      - "os/**"
+      - ".github/workflows/build-akuos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ISO tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorriso squashfs-tools qemu-system-x86 ovmf
+
+      - name: Build AkuOS
+        run: |
+          chmod +x os/build.sh
+          ./os/build.sh
+
+      - name: Check ISO size
+        run: |
+          ls -lh dist/AkuOS-1.0-x86_64.iso
+          test `stat -c%s dist/AkuOS-1.0-x86_64.iso` -lt 52428800
+
+      - name: Smoke-test ISO structure
+        run: |
+          xorriso -indev dist/AkuOS-1.0-x86_64.iso -toc >/tmp/akuos-toc.txt
+          grep -q "boot/isolinux/isolinux.bin" /tmp/akuos-toc.txt
+          grep -q "boot/vmlinuz64" /tmp/akuos-toc.txt
+          grep -q "boot/corepure64.gz" /tmp/akuos-toc.txt
+          grep -q "cde/optional/akuos.tcz" /tmp/akuos-toc.txt
+
+      - name: Boot smoke test
+        run: |
+          timeout 25s qemu-system-x86_64 \
+            -m 512M \
+            -cdrom dist/AkuOS-1.0-x86_64.iso \
+            -display none \
+            -serial stdio \
+            -no-reboot \
+            >dist/qemu-boot.log 2>&1 || true
+          grep -Eqi "Tiny Core|AkuOS|Linux version|Booting" dist/qemu-boot.log || {
+            echo "QEMU boot log did not contain expected boot markers"
+            tail -100 dist/qemu-boot.log
+            exit 1
+          }
+
+      - name: Package build report
+        run: |
+          {
+            echo "AkuOS 1.0 build"
+            echo
+            echo "ISO:"
+            ls -lh dist/AkuOS-1.0-x86_64.iso
+            echo
+            echo "SHA256:"
+            sha256sum dist/AkuOS-1.0-x86_64.iso
+          } > dist/BUILD-REPORT.txt
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AkuOS-1.0-x86_64
+          path: |
+            dist/AkuOS-1.0-x86_64.iso
+            dist/BUILD-REPORT.txt
+            dist/qemu-boot.log
