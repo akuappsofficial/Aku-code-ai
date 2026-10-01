@@ -1,87 +1,44 @@
 #include <stdint.h>
+#define WHITE 0xF2F6FF
+#define MUTED 0x9AAAC0
+#define BLUE 0x5B9CFF
+#define CYAN 0x65E6D5
+#define PANEL 0x101A2A
+#define BG 0x07101D
+#define RED 0xFF718A
+#define YELLOW 0xF5C451
 
-typedef struct {
-    uint32_t flags, mem_lower, mem_upper, boot_device, cmdline, mods_count, mods_addr;
-    uint32_t syms[4];
-    uint32_t mmap_length, mmap_addr, drives_length, drives_addr, config_table, boot_loader_name, apm_table;
-    uint64_t framebuffer_addr;
-    uint32_t framebuffer_pitch, framebuffer_width, framebuffer_height;
-    uint8_t framebuffer_bpp, framebuffer_type;
-    uint16_t color_info[6];
-} __attribute__((packed)) multiboot_info_t;
-
-static volatile uint32_t *fb;
-static uint32_t pitch, sw, sh;
-static int graphical;
-
-static uint8_t inb(uint16_t port) {
-    uint8_t v;
-    __asm__ volatile ("inb %1,%0" : "=a"(v) : "Nd"(port));
-    return v;
-}
-static void px(int x,int y,uint32_t c){if(!graphical||x<0||y<0||(uint32_t)x>=sw||(uint32_t)y>=sh)return;fb[y*pitch/4+x]=c;}
+typedef struct{uint32_t flags,mem_lower,mem_upper,boot_device,cmdline,mods_count,mods_addr;uint32_t syms[4],mmap_length,mmap_addr,drives_length,drives_addr,config_table,boot_loader_name,apm_table;uint64_t framebuffer_addr;uint32_t framebuffer_pitch,framebuffer_width,framebuffer_height;uint8_t framebuffer_bpp,framebuffer_type;uint16_t color_info[6];}__attribute__((packed)) multiboot_info_t;
+static volatile uint32_t*fb;static uint32_t pitch,sw,sh;static int gfx;
+static inline uint8_t inb(uint16_t p){uint8_t v;__asm__ volatile("inb %1,%0":"=a"(v):"Nd"(p));return v;}
+static inline void outb(uint16_t p,uint8_t v){__asm__ volatile("outb %0,%1"::"a"(v),"Nd"(p));}
+static void px(int x,int y,uint32_t c){if(!gfx||x<0||y<0||(uint32_t)x>=sw||(uint32_t)y>=sh)return;fb[y*pitch/4+x]=c;}
 static void rect(int x,int y,int w,int h,uint32_t c){for(int j=0;j<h;j++)for(int i=0;i<w;i++)px(x+i,y+j,c);}
-static void line(int x0,int y0,int x1,int y1,uint32_t c){int dx=x1-x0,sx=dx<0?-1:1,dy=-(y1-y0),sy=dy<0?-1:1,e=dx+dy;for(;;){px(x0,y0,c);if(x0==x1&&y0==y1)break;int e2=2*e;if(e2>=dy){e+=dy;x0+=sx;}if(e2<=dx){e+=dx;y0+=sy;}}}
-
+static void line(int x0,int y0,int x1,int y1,uint32_t c){int dx=x1-x0,sx=dx<0?-1:1,dy=-(y1-y0),sy=dy<0?-1:1,e=dx+dy;for(;;){px(x0,y0,c);if(x0==x1&&y0==y1)return;int e2=2*e;if(e2>=dy){e+=dy;x0+=sx;}if(e2<=dx){e+=dx;y0+=sy;}}}
 static uint8_t glyph(char c,int r){
-static const uint8_t A[26][7]={
-{14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},{30,17,17,17,17,17,30},
-{31,16,16,30,16,16,31},{31,16,16,30,16,16,16},{14,17,16,23,17,17,15},{17,17,17,31,17,17,17},
-{14,4,4,4,4,4,14},{7,2,2,2,18,18,12},{17,18,20,24,20,18,17},{16,16,16,16,16,16,31},
-{17,27,21,21,17,17,17},{17,25,21,19,17,17,17},{14,17,17,17,17,17,14},{30,17,17,30,16,16,16},
-{14,17,17,17,21,18,13},{30,17,17,30,20,18,17},{15,16,16,14,1,1,30},{31,4,4,4,4,4,4},
-{17,17,17,17,17,17,14},{17,17,17,17,17,10,4},{17,17,17,21,21,21,10},{17,17,10,4,10,17,17},
-{17,17,10,4,4,4,4},{31,1,2,4,8,16,31}};
+static const uint8_t A[26][7]={{14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},{30,17,17,17,17,17,30},{31,16,16,30,16,16,31},{31,16,16,30,16,16,16},{14,17,16,23,17,17,15},{17,17,17,31,17,17,17},{14,4,4,4,4,4,14},{7,2,2,2,18,18,12},{17,18,20,24,20,18,17},{16,16,16,16,16,16,31},{17,27,21,21,17,17,17},{17,25,21,19,17,17,17},{14,17,17,17,17,17,14},{30,17,17,30,16,16,16},{14,17,17,17,21,18,13},{30,17,17,30,20,18,17},{15,16,16,14,1,1,30},{31,4,4,4,4,4,4},{17,17,17,17,17,17,14},{17,17,17,17,17,10,4},{17,17,17,21,21,21,10},{17,17,10,4,10,17,17},{17,17,10,4,4,4,4},{31,1,2,4,8,16,31}};
 if(c>='a'&&c<='z')c-=32;if(c>='A'&&c<='Z')return A[c-'A'][r];
-switch(c){
-case '0':{static const uint8_t g[]={14,17,19,21,25,17,14};return g[r];}
-case '1':{static const uint8_t g[]={4,12,4,4,4,4,14};return g[r];}
-case '2':{static const uint8_t g[]={14,17,1,2,4,8,31};return g[r];}
-case '3':{static const uint8_t g[]={30,1,1,14,1,1,30};return g[r];}
-case '4':{static const uint8_t g[]={2,6,10,18,31,2,2};return g[r];}
-case '5':{static const uint8_t g[]={31,16,16,30,1,1,30};return g[r];}
-case '6':{static const uint8_t g[]={14,16,16,30,17,17,14};return g[r];}
-case '7':{static const uint8_t g[]={31,1,2,4,8,8,8};return g[r];}
-case '8':{static const uint8_t g[]={14,17,17,14,17,17,14};return g[r];}
-case '9':{static const uint8_t g[]={14,17,17,15,1,1,14};return g[r];}
-case ':':{static const uint8_t g[]={0,4,4,0,4,4,0};return g[r];}
-case '.':{static const uint8_t g[]={0,0,0,0,0,6,6};return g[r];}
-case '-':{static const uint8_t g[]={0,0,0,31,0,0,0};return g[r];}
-case '/':{static const uint8_t g[]={1,2,2,4,8,8,16};return g[r];}
-case '+':{static const uint8_t g[]={0,4,4,31,4,4,0};return g[r];}
-default:return 0;}}
-
+switch(c){case '0':{static const uint8_t g[]={14,17,19,21,25,17,14};return g[r];}case '1':{static const uint8_t g[]={4,12,4,4,4,4,14};return g[r];}case '2':{static const uint8_t g[]={14,17,1,2,4,8,31};return g[r];}case '3':{static const uint8_t g[]={30,1,1,14,1,1,30};return g[r];}case '4':{static const uint8_t g[]={2,6,10,18,31,2,2};return g[r];}case '5':{static const uint8_t g[]={31,16,16,30,1,1,30};return g[r];}case '6':{static const uint8_t g[]={14,16,16,30,17,17,14};return g[r];}case '7':{static const uint8_t g[]={31,1,2,4,8,8,8};return g[r];}case '8':{static const uint8_t g[]={14,17,17,14,17,17,14};return g[r];}case '9':{static const uint8_t g[]={14,17,17,15,1,1,14};return g[r];}case ':':{static const uint8_t g[]={0,4,4,0,4,4,0};return g[r];}case '.':{static const uint8_t g[]={0,0,0,0,0,6,6};return g[r];}case '-':{static const uint8_t g[]={0,0,0,31,0,0,0};return g[r];}case '_':{static const uint8_t g[]={0,0,0,0,0,0,31};return g[r];}case '/':{static const uint8_t g[]={1,2,2,4,8,8,16};return g[r];}case '+':{static const uint8_t g[]={0,4,4,31,4,4,0};return g[r];}case '?':{static const uint8_t g[]={14,17,1,2,4,0,4};return g[r];}default:return 0;}}
 static void text(int x,int y,const char*s,uint32_t c,int z){while(*s){for(int r=0;r<7;r++){uint8_t b=glyph(*s,r);for(int k=0;k<5;k++)if(b&(1<<(4-k)))rect(x+k*z,y+r*z,z,z,c);}x+=6*z;s++;}}
-
-static void folder(int x,int y,uint32_t c){rect(x,y+7,34,25,c);rect(x+4,y+2,16,9,c);}
-static void terminal_icon(int x,int y,uint32_t c){rect(x,y,38,30,c);line(x+7,y+9,x+15,y+15,c);line(x+15,y+15,x+7,y+21,c);line(x+19,y+23,x+30,y+23,c);}
-static void settings_icon(int x,int y,uint32_t c){rect(x+13,y+2,12,26,c);rect(x+2,y+13,34,4,c);rect(x+8,y+8,22,14,c);rect(x+14,y+11,10,8,0x172033);}
-static void game_icon(int x,int y,uint32_t c){rect(x+4,y+10,30,16,c);rect(x+10,y+6,18,6,c);rect(x+9,y+15,4,12,0x172033);rect(x+5,y+19,12,4,0x172033);rect(x+25,y+16,3,3,0x172033);rect(x+30,y+20,3,3,0x172033);}
-
-static void desktop(void){
-rect(0,0,sw,sh,0x08111F);
-for(int y=0;y<(int)sh;y+=80)rect(0,y,sw,1,0x14243A);
-rect(0,0,sw,58,0x101C2E);rect(18,14,30,30,0x4F8CFF);text(25,22,"A",0xFFFFFF,2);
-text(62,20,"AKU OS",0xFFFFFF,2);text(sw-230,22,"SYSTEM READY",0x7FD7FF,1);
-rect(55,95,sw-110,145,0x101C2E);rect(55,95,6,145,0x4F8CFF);
-text(85,120,"WELCOME TO AKU OS",0xFFFFFF,3);text(87,170,"A TINY DESKTOP BUILT FROM SCRATCH",0x9BB4D1,1);text(87,196,"V1.0 / VENTOY READY",0x6EE7B7,1);
-int y=280,g=22,w=190;uint32_t card=0x101C2E,white=0xEAF2FF;
-rect(55,y,w,120,card);folder(78,y+20,0x4F8CFF);text(78,y+70,"FILES",white,2);
-rect(55+w+g,y,w,120,card);terminal_icon(78+w+g,y+18,0x6EE7B7);text(78+w+g,y+70,"TERMINAL",white,2);
-rect(55+2*(w+g),y,w,120,card);settings_icon(78+2*(w+g),y+18,0xF5C451);text(78+2*(w+g),y+70,"SETTINGS",white,2);
-if(sw>850){rect(55+3*(w+g),y,w,120,card);game_icon(78+3*(w+g),y+18,0xFF7A90);text(78+3*(w+g),y+70,"GAMES",white,2);}
-int py=435;rect(55,py,sw-110,130,0x0E1828);text(78,py+22,"SYSTEM",0xFFFFFF,2);
-text(78,py+60,"CPU X86 / MEMORY AVAILABLE / DISPLAY FRAMEBUFFER",0x9BB4D1,1);
-text(78,py+88,"KEYS: 1 FILES  2 TERMINAL  3 SETTINGS  4 GAMES",0x6EE7B7,1);
-rect(0,sh-58,sw,58,0x101C2E);text(24,sh-39,"AKU",0x4F8CFF,2);text(sw-160,sh-38,"V1.0",0x9BB4D1,1);
-}
-static void terminal_screen(void){rect(0,0,sw,sh,0x050A12);rect(0,0,sw,48,0x101C2E);text(20,18,"AKU TERMINAL",0xFFFFFF,2);text(20,85,"AKU OS V1.0",0x6EE7B7,2);text(20,125,"TYPE HELP FOR COMMANDS",0x9BB4D1,1);text(20,165,"AKU@OS:~$",0x4F8CFF,2);}
-
-void kmain(uint32_t magic,uint32_t mbi_addr){
-if(magic==0x2BADB002){multiboot_info_t*m=(multiboot_info_t*)mbi_addr;if((m->flags&(1<<12))&&m->framebuffer_type==1&&m->framebuffer_bpp==32){fb=(volatile uint32_t*)(uintptr_t)m->framebuffer_addr;pitch=m->framebuffer_pitch;sw=m->framebuffer_width;sh=m->framebuffer_height;graphical=1;}}
-if(!graphical){volatile uint16_t*v=(volatile uint16_t*)0xB8000;const char*s="AKU OS V1.0 - FRAMEBUFFER UNAVAILABLE";for(int i=0;s[i];i++)v[i]=(0x0F<<8)|s[i];for(;;)__asm__ volatile("hlt");}
-desktop();
-for(;;){if(!(inb(0x64)&1))continue;uint8_t s=inb(0x60);if(s&0x80)continue;
-if(s==0x02)desktop();else if(s==0x03)terminal_screen();else if(s==0x04){desktop();rect(120,620,sw-240,90,0x16243A);text(145,642,"SETTINGS",0xFFFFFF,2);text(145,674,"DISPLAY AUDIO INPUT ABOUT",0x9BB4D1,1);}
-else if(s==0x05){desktop();rect(120,620,sw-240,90,0x16243A);text(145,642,"GAMES",0xFFFFFF,2);text(145,674,"GAME RUNTIME NOT INSTALLED",0xFFB4C0,1);}
-else if(s==0x01)desktop();}}
+static int slen(const char*s){int n=0;while(s[n])n++;return n;}
+static void panel(int x,int y,int w,int h){rect(x,y,w,h,PANEL);rect(x,y,w,2,0x243652);}
+static void folder(int x,int y){rect(x,y+7,38,27,BLUE);rect(x+4,y+2,18,10,BLUE);}
+static void terminal_icon(int x,int y){rect(x,y,42,32,CYAN);line(x+7,y+9,x+16,y+16,0x07101D);line(x+16,y+16,x+7,y+23,0x07101D);line(x+21,y+25,x+34,y+25,0x07101D);}
+static void settings_icon(int x,int y){rect(x+14,y+2,14,30,YELLOW);rect(x+3,y+14,36,6,YELLOW);rect(x+10,y+9,22,16,YELLOW);rect(x+15,y+12,12,10,PANEL);}
+static void game_icon(int x,int y){rect(x+3,y+10,38,20,RED);rect(x+10,y+5,24,8,RED);rect(x+10,y+17,4,14,PANEL);rect(x+6,y+22,12,4,PANEL);rect(x+29,y+16,4,4,PANEL);rect(x+34,y+22,4,4,PANEL);}
+static int mx=40,my=90;static int mouse_ok;
+static void mouse_write(uint8_t a){while(inb(0x64)&2);outb(0x64,0xD4);while(inb(0x64)&2);outb(0x60,a);}
+static void mouse_init(void){while(inb(0x64)&1)inb(0x60);while(inb(0x64)&2);outb(0x64,0xA8);while(inb(0x64)&2);outb(0x64,0x20);uint8_t c;while(!(inb(0x64)&1));c=inb(0x60);c|=2;c&=~0x20;while(inb(0x64)&2);outb(0x64,0x60);while(inb(0x64)&2);outb(0x60,c);mouse_write(0xF6);while(!(inb(0x64)&1));inb(0x60);mouse_write(0xF4);while(!(inb(0x64)&1));inb(0x60);mouse_ok=1;}
+static void mouse_poll(void){if(!mouse_ok)return;uint8_t st=inb(0x64);if(!(st&1)||!(st&0x20))return;int8_t dx=(int8_t)inb(0x60);if(!(inb(0x64)&1))return;int8_t dy=(int8_t)inb(0x60);if(!(inb(0x64)&1))return;inb(0x60);mx+=dx;my-=dy;if(mx<0)mx=0;if(my<58)my=58;if(mx>=(int)sw)mx=sw-1;if(my>=(int)sh)my=sh-1;}
+static void cursor(void){rect(mx,my,10,2,WHITE);rect(mx,my,2,10,WHITE);}
+static char keychar(uint8_t s){static const char*r1="1234567890-=";static const char*r2="qwertyuiop[]";static const char*r3="asdfghjkl;'";static const char*r4="zxcvbnm,./";if(s>=2&&s<=13)return r1[s-2];if(s>=16&&s<=27)return r2[s-16];if(s>=30&&s<=40)return r3[s-30];if(s>=44&&s<=53)return r4[s-44];if(s==57)return ' ';return 0;}
+enum{DESKTOP,FILES,TERM,SETTINGS,GAMES};static int app=DESKTOP;static char cmd[96];static int cmdn;
+static void header(const char*t){rect(0,0,sw,58,0x101C2E);rect(18,14,30,30,BLUE);text(25,22,"A",WHITE,2);text(62,20,t,WHITE,2);text(sw-110,21,"AKU",CYAN,1);}
+static void desktop(void){rect(0,0,sw,sh,BG);for(int y=58;y<(int)sh;y+=80)rect(0,y,sw,1,0x112238);header("AKU OS");text(62,40,"DESKTOP",MUTED,1);panel(55,92,sw-110,138);rect(55,92,5,138,BLUE);text(84,118,"WELCOME TO AKU OS",WHITE,3);text(86,166,"A SMALL X86 DESKTOP OPERATING SYSTEM",MUTED,1);text(86,190,"BOOTED FROM GRUB / VENTOY",CYAN,1);int y=260,g=18,w=(sw>900?190:150),x=55;panel(x,y,w,120);folder(x+25,y+20);text(x+25,y+76,"FILES",WHITE,2);x+=w+g;panel(x,y,w,120);terminal_icon(x+22,y+18);text(x+22,y+76,"TERMINAL",WHITE,2);x+=w+g;panel(x,y,w,120);settings_icon(x+20,y+18);text(x+20,y+76,"SETTINGS",WHITE,2);if(x+w+g<(int)sw-40){x+=w+g;panel(x,y,w,120);game_icon(x+20,y+18);text(x+20,y+76,"GAMES",WHITE,2);}panel(55,420,sw-110,128);text(80,446,"SYSTEM STATUS",WHITE,2);text(80,480,"KERNEL: AKU / MODE: PROTECTED 32-BIT",MUTED,1);text(80,505,"MOUSE: ACTIVE   KEYBOARD: ACTIVE   FRAMEBUFFER: ACTIVE",CYAN,1);rect(0,sh-54,sw,54,0x101C2E);text(22,sh-36,"1 FILES   2 TERMINAL   3 SETTINGS   4 GAMES",MUTED,1);}
+static void files_screen(void){rect(0,0,sw,sh,BG);header("FILES");text(25,85,"HOME",CYAN,2);const char*n[]={"SYSTEM","APPS","USERS","README.TXT"};int y=130;for(int i=0;i<4;i++){panel(35,y,sw-70,62);folder(55,y+13);text(115,y+25,n[i],WHITE,2);text(115,y+46,i==3?"AKU OS INFORMATION":"DIRECTORY",MUTED,1);y+=78;}text(35,sh-35,"ESC: DESKTOP   ENTER: OPEN",MUTED,1);}
+static void terminal_screen(void){rect(0,0,sw,sh,0x040912);header("TERMINAL");text(20,85,"AKU SHELL 0.1",CYAN,2);text(20,112,"TYPE HELP FOR COMMANDS",MUTED,1);text(20,155,"AKU@OS:~$",BLUE,2);text(20+66,155,cmd,WHITE,2);rect(86+slen(cmd)*12,173,7,2,CYAN);}
+static void settings_screen(void){rect(0,0,sw,sh,BG);header("SETTINGS");text(35,90,"SYSTEM SETTINGS",WHITE,2);panel(35,125,sw-70,70);text(60,148,"DISPLAY",CYAN,2);text(60,172,"FRAMEBUFFER / 32-BIT",MUTED,1);panel(35,210,sw-70,70);text(60,233,"INPUT",CYAN,2);text(60,257,"PS2 KEYBOARD + MOUSE",MUTED,1);panel(35,295,sw-70,70);text(60,318,"KERNEL",CYAN,2);text(60,342,"MULTIBOOT / X86 / FREESTANDING",MUTED,1);panel(35,380,sw-70,70);text(60,403,"STORAGE",CYAN,2);text(60,427,"DRIVER IN DEVELOPMENT",MUTED,1);}
+static int gx=300,gy=350;static void games_screen(void){rect(0,0,sw,sh,BG);header("GAMES");text(35,88,"AKU SNAKE LAB",WHITE,2);panel(35,120,sw-70,sh-185);text(55,145,"ARROW KEYS / WASD MOVE",MUTED,1);rect(55,175,sw-110,sh-240,0x050A12);rect(gx,gy,18,18,CYAN);text(55,sh-45,"ESC: DESKTOP",MUTED,1);}
+static void render(void){if(app==DESKTOP)desktop();else if(app==FILES)files_screen();else if(app==TERM)terminal_screen();else if(app==SETTINGS)settings_screen();else games_screen();cursor();}
+static void command(void){cmd[cmdn]=0;if(!cmdn)return;if(cmd[0]=='h'){text(20,210,"HELP  CLEAR  ABOUT  FILES  SETTINGS  GAMES",WHITE,1);}else if(cmd[0]=='c'){cmdn=0;cmd[0]=0;terminal_screen();return;}else if(cmd[0]=='f')app=FILES;else if(cmd[0]=='s')app=SETTINGS;else if(cmd[0]=='g')app=GAMES;else if(cmd[0]=='a')text(20,210,"AKU OS 1.1 - FREESTANDING X86 KERNEL",WHITE,1);else text(20,210,"UNKNOWN COMMAND - TYPE HELP",RED,1);}
+void kmain(uint32_t magic,uint32_t addr){if(magic==0x2BADB002){multiboot_info_t*m=(multiboot_info_t*)addr;if((m->flags&(1<<12))&&m->framebuffer_type==1&&m->framebuffer_bpp==32){fb=(volatile uint32_t*)(uintptr_t)m->framebuffer_addr;pitch=m->framebuffer_pitch;sw=m->framebuffer_width;sh=m->framebuffer_height;gfx=1;}}if(!gfx){volatile uint16_t*v=(volatile uint16_t*)0xB8000;const char*s="AKU OS - framebuffer unavailable";for(int i=0;s[i];i++)v[i]=(0x0F<<8)|s[i];for(;;)__asm__ volatile("hlt");}mouse_init();render();for(;;){mouse_poll();if(inb(0x64)&1){uint8_t s=inb(0x60);if(s&0x80)continue;if(app==TERM){if(s==0x1C){command();cmdn=0;cmd[0]=0;}else if(s==0x0E&&cmdn)cmd[--cmdn]=0;else{char c=keychar(s);if(c&&cmdn<90){cmd[cmdn++]=c;cmd[cmdn]=0;}}}else if(app==GAMES){if(s==0x48||s==0x11)gy-=8;if(s==0x50||s==0x1F)gy+=8;if(s==0x4B||s==0x1E)gx-=8;if(s==0x4D||s==0x20)gx+=8;}else{if(s==2)app=FILES;else if(s==3)app=TERM;else if(s==4)app=SETTINGS;else if(s==5)app=GAMES;else if(s==1)app=DESKTOP;else if(s==0x1C&&app==FILES)app=DESKTOP;}render();}}}
