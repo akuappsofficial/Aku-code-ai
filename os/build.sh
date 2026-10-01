@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # AkuOS 1.0
-# Tiny graphical Linux image designed to remain below 50 MiB.
+# Tiny graphical Linux image designed to remain below 50,000,000 bytes (~47.7 MiB).
 # Base: TinyCorePure64 17.1 (x86_64)
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -399,7 +399,7 @@ SIZE=$(stat -c%s "$ISO_OUT")
 MIB=$((SIZE / 1024 / 1024))
 echo "[AkuOS] ISO size: $SIZE bytes (~$MIB MiB)"
 
-if [ "$SIZE" -ge 52428800 ]; then
+if [ "$SIZE" -ge 50000000 ]; then
   echo "[AkuOS] ERROR: ISO is not below 50 MiB."
   exit 1
 fi
