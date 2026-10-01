@@ -393,7 +393,7 @@ Ventoy-compatible live ISO
 EOF
 
 echo "[AkuOS] Building ISO..."
-xorriso -as mkisofs   -l -J -R   -V "AKUOS_1_0"   -isohybrid-mbr "$NEWISO/boot/isolinux/isohdpfx.bin"   -partition_offset 16   -b boot/isolinux/isolinux.bin   -c boot/isolinux/boot.cat   -no-emul-boot   -boot-load-size 4   -boot-info-table   -o "$ISO_OUT"   "$NEWISO" >/dev/null 2>&1
+xorriso -as mkisofs   -l -J -R   -V "AKUOS_1_0"     -b boot/isolinux/isolinux.bin   -c boot/isolinux/boot.cat   -no-emul-boot   -boot-load-size 4   -boot-info-table   -o "$ISO_OUT"   "$NEWISO" >/dev/null 2>&1
 
 SIZE=$(stat -c%s "$ISO_OUT")
 MIB=$((SIZE / 1024 / 1024))
