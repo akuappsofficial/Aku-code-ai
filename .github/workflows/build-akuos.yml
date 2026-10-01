@@ -105,7 +105,7 @@ jobs:
             dist/AkuOS-1.0-x86_64.iso
             dist/BUILD-REPORT.txt
             dist/qemu-bios.log
-dist/qemu-uefi.log
+            dist/qemu-uefi.log
 
       - name: Publish permanent release download
         uses: softprops/action-gh-release@v2
