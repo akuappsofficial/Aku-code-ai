@@ -8,8 +8,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$ROOT/.akuos-build"
 DIST="$ROOT/dist"
-BASE_URL="https://www.tinycorelinux.net/17.x/x86_64/release"
-BASE_ISO="$WORK/TinyCorePure64-17.1.iso"
+BASE_NAME="TinyCorePure64-17.1.iso"
+BASE_ISO="$WORK/$BASE_NAME"
+BASE_URLS=(
+  "https://mirror.nju.edu.cn/tinycorelinux/17.x/x86_64/release"
+  "https://mirrors.aliyun.com/tinycorelinux/17.x/x86_64/release"
+  "https://ftp.icm.edu.pl/packages/linux-tinycorelinux/17.x/x86_64/release"
+  "https://www.tinycorelinux.net/17.x/x86_64/release"
+)
 ISO_OUT="$DIST/AkuOS-1.0-x86_64.iso"
 EXTROOT="$WORK/extension"
 NEWISO="$WORK/newiso"
@@ -18,12 +24,22 @@ rm -rf "$WORK" "$DIST"
 mkdir -p "$WORK" "$DIST" "$EXTROOT" "$NEWISO"
 
 echo "[AkuOS] Downloading TinyCorePure64 17.1..."
-curl -fL --retry 4 --retry-delay 2 -o "$BASE_ISO" "$BASE_URL/TinyCorePure64-17.1.iso"
-curl -fL --retry 4 --retry-delay 2 -o "$WORK/base.md5" "$BASE_URL/TinyCorePure64-17.1.iso.md5.txt"
-(
-  cd "$WORK"
-  md5sum -c base.md5
-)
+DOWNLOAD_OK=0
+for BASE_URL in "${BASE_URLS[@]}"; do
+  echo "[AkuOS] Trying $BASE_URL"
+  if curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 -o "$BASE_ISO" "$BASE_URL/$BASE_NAME" && \
+     curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 -o "$WORK/base.md5" "$BASE_URL/$BASE_NAME.md5.txt"; then
+    if (cd "$WORK" && md5sum -c base.md5); then
+      DOWNLOAD_OK=1
+      break
+    fi
+  fi
+  rm -f "$BASE_ISO" "$WORK/base.md5"
+done
+if [ "$DOWNLOAD_OK" -ne 1 ]; then
+  echo "[AkuOS] ERROR: Could not download and verify $BASE_NAME from any mirror."
+  exit 1
+fi
 
 echo "[AkuOS] Extracting base ISO..."
 xorriso -osirrox on -indev "$BASE_ISO" -extract / "$NEWISO" >/dev/null 2>&1
@@ -376,10 +392,14 @@ mksquashfs "$EXTROOT" "$NEWISO/cde/optional/akuos.tcz" -noappend -comp xz -b 1M 
 printf '%s\n' 'akuos.tcz' > "$NEWISO/cde/onboot.lst"
 : > "$NEWISO/cde/copy2fs.flg"
 
-# Tell Tiny Core to scan CD extensions.
+# Tell Tiny Core to scan CD extensions and mirror kernel messages to serial
+# so CI can perform a real boot smoke test.
 CFG="$NEWISO/boot/isolinux/isolinux.cfg"
 if [ -f "$CFG" ]; then
-  sed -i -E 's/^(APPEND[[:space:]]+)/\1cde /' "$CFG"
+  sed -i -E '/^[[:space:]]*APPEND[[:space:]]/ {
+    /(^|[[:space:]])cde([[:space:]]|$)/! s/^[[:space:]]*APPEND[[:space:]]+/&cde /;
+    /console=ttyS0/! s/$/ console=ttyS0,115200n8/;
+  }' "$CFG"
 else
   echo "[AkuOS] ERROR: isolinux.cfg not found"
   exit 1
@@ -393,7 +413,20 @@ Ventoy-compatible live ISO
 EOF
 
 echo "[AkuOS] Building ISO..."
-xorriso -as mkisofs   -l -J -R   -V "AKUOS_1_0"     -b boot/isolinux/isolinux.bin   -c boot/isolinux/boot.cat   -no-emul-boot   -boot-load-size 4   -boot-info-table   -o "$ISO_OUT"   "$NEWISO" >/dev/null 2>&1
+ISO_ARGS=(
+  -as mkisofs -l -J -R -V "AKUOS_1_0"
+  -b boot/isolinux/isolinux.bin
+  -c boot/isolinux/boot.cat
+  -no-emul-boot -boot-load-size 4 -boot-info-table
+)
+# TinyCorePure64 includes an EFI El Torito image. Preserve it so the rebuilt
+# ISO remains usable through Ventoy on UEFI machines as well as legacy BIOS.
+if [ -f "$NEWISO/EFI/BOOT/efiboot.img" ]; then
+  ISO_ARGS+=( -eltorito-alt-boot -e EFI/BOOT/efiboot.img -no-emul-boot )
+fi
+# Add GPT/UEFI-friendly metadata without requiring the old isohybrid MBR file.
+ISO_ARGS+=( -isohybrid-gpt-basdat -o "$ISO_OUT" "$NEWISO" )
+xorriso "${ISO_ARGS[@]}" >/dev/null 2>&1
 
 SIZE=$(stat -c%s "$ISO_OUT")
 MIB=$((SIZE / 1024 / 1024))
