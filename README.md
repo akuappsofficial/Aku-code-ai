@@ -1,22 +1,29 @@
-# AKU OS
+# AKU OS v1.0
 
-AKU OS is a from-scratch experimental x86 operating system.
+AKU OS is an experimental x86 operating system built from scratch.
 
-## v0.1
-- Multiboot-compatible kernel
-- Boots from an ISO
-- Designed for Ventoy
-- VGA text console
-- PS/2 keyboard input
-- Tiny interactive shell
+## Desktop v1.0
+- GRUB Multiboot boot
+- 1024x768x32 framebuffer desktop
+- Custom vector-style icons drawn by the kernel
+- Files, Terminal, Settings and Games desktop panels
+- Built-in terminal screen
+- Keyboard desktop navigation
+- Dark futuristic UI
+- Ventoy-ready ISO build
+- Automatic GitHub Actions ISO artifact
 
-GitHub Actions builds `aku-os.iso` automatically.
+## Keyboard
+- **1** — Files/Desktop
+- **2** — Terminal
+- **3** — Settings
+- **4** — Games
+- **Esc** — Return to desktop
 
-## Boot with Ventoy
-1. Open the GitHub Actions workflow **Build AKU OS ISO**.
-2. Run it manually.
-3. Download the `aku-os-iso` artifact.
-4. Copy `aku-os.iso` to a Ventoy USB.
-5. Boot the computer and select AKU OS.
+## Build
+GitHub Actions builds `aku-os.iso` and publishes it as the `aku-os-v1.0-iso` artifact.
 
-Windows .exe compatibility and GTA San Andreas support are future goals, not v0.1 features.
+Copy that ISO to a Ventoy USB and boot it.
+
+## Important
+This is a real bootable OS development project, but v1.0 is still an experimental desktop foundation. It does **not** yet provide Windows Win32 compatibility, NTFS, modern GPU drivers, networking, audio, or GTA San Andreas support. Those require substantial additional kernel, driver, graphics and compatibility work.
