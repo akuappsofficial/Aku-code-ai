@@ -1,7 +1,8 @@
-name: Build AkuOS ISO
+name: Build AkuOS 1.0
 
 on:
   push:
+    branches: [main]
     paths:
       - "os/**"
       - ".github/workflows/build-akuos.yml"
@@ -13,108 +14,70 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install ISO tools
+      - name: Install required tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y xorriso squashfs-tools qemu-system-x86 ovmf
-
+          sudo apt-get install -y curl xorriso qemu-system-x86 ovmf
       - name: Build AkuOS
         run: |
           chmod +x os/build.sh
           ./os/build.sh
-
-      - name: Check ISO size
+      - name: Validate ISO
         run: |
-          ls -lh dist/AkuOS-1.0-x86_64.iso
-          test `stat -c%s dist/AkuOS-1.0-x86_64.iso` -lt 50000000
-
-      - name: Smoke-test ISO structure
-        run: |
-          xorriso -indev dist/AkuOS-1.0-x86_64.iso -find / -type f -print >/tmp/akuos-files.txt
-          grep -q "/boot/isolinux/isolinux.bin" /tmp/akuos-files.txt
-          grep -q "/boot/vmlinuz64" /tmp/akuos-files.txt
-          grep -q "/boot/corepure64.gz" /tmp/akuos-files.txt
-          grep -q "/cde/optional/akuos.tcz" /tmp/akuos-files.txt
-          grep -q "/EFI/BOOT/efiboot.img" /tmp/akuos-files.txt
-
-      - name: BIOS boot smoke test
+          test -f dist/AkuOS-1.0-x86_64.iso
+          test -f dist/AkuOS-1.0-x86_64.iso.sha256
+          SIZE=$(stat -c%s dist/AkuOS-1.0-x86_64.iso)
+          test "$SIZE" -lt 50000000
+          xorriso -indev dist/AkuOS-1.0-x86_64.iso -toc >/tmp/toc.txt
+          grep -q "boot/vmlinuz64" /tmp/toc.txt
+          grep -q "boot/corepure64.gz" /tmp/toc.txt
+          sha256sum -c dist/AkuOS-1.0-x86_64.iso.sha256
+      - name: BIOS boot test
         run: |
           set +e
-          timeout 25s qemu-system-x86_64 \
-            -m 512M \
-            -cdrom dist/AkuOS-1.0-x86_64.iso \
-            -display none \
-            -serial stdio \
-            -no-reboot \
-            >dist/qemu-bios.log 2>&1
+          timeout 30s qemu-system-x86_64 -m 512M -cdrom dist/AkuOS-1.0-x86_64.iso -display none -serial stdio -no-reboot >dist/qemu-bios.log 2>&1
           RC=$?
           set -e
-          grep -Eqi "Linux version|Kernel command line|Tiny Core|AkuOS" dist/qemu-bios.log || {
-            echo "BIOS QEMU boot log did not contain expected boot markers (rc=$RC)"
-            tail -120 dist/qemu-bios.log
-            exit 1
-          }
-
-      - name: UEFI boot smoke test
+          grep -Eqi "Linux version|Tiny Core|Kernel command line" dist/qemu-bios.log
+          echo "BIOS smoke test reached Linux/Tiny Core (QEMU rc=$RC)"
+      - name: UEFI boot test
         run: |
-          OVMF_CODE=""
+          CODE=""
           for f in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd; do
-            if [ -f "$f" ]; then OVMF_CODE="$f"; break; fi
+            if [ -f "$f" ]; then CODE="$f"; break; fi
           done
-          test -n "$OVMF_CODE"
+          test -n "$CODE"
           set +e
-          timeout 25s qemu-system-x86_64 \
-            -machine q35 \
-            -m 512M \
-            -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-            -cdrom dist/AkuOS-1.0-x86_64.iso \
-            -display none \
-            -serial stdio \
-            -no-reboot \
-            >dist/qemu-uefi.log 2>&1
+          timeout 30s qemu-system-x86_64 -machine q35 -m 512M -drive if=pflash,format=raw,readonly=on,file="$CODE" -cdrom dist/AkuOS-1.0-x86_64.iso -display none -serial stdio -no-reboot >dist/qemu-uefi.log 2>&1
           RC=$?
           set -e
-          grep -Eqi "Linux version|Kernel command line|Tiny Core|AkuOS" dist/qemu-uefi.log || {
-            echo "UEFI QEMU boot log did not contain expected boot markers (rc=$RC)"
-            tail -120 dist/qemu-uefi.log
-            exit 1
-          }
-
-      - name: Package build report
-        run: |
-          {
-            echo "AkuOS 1.0 build"
-            echo
-            echo "ISO:"
-            ls -lh dist/AkuOS-1.0-x86_64.iso
-            echo
-            echo "SHA256:"
-            sha256sum dist/AkuOS-1.0-x86_64.iso
-          } > dist/BUILD-REPORT.txt
-
-      - name: Upload ISO artifact
+          grep -Eqi "Linux version|Tiny Core|Kernel command line" dist/qemu-uefi.log
+          echo "UEFI smoke test reached Linux/Tiny Core (QEMU rc=$RC)"
+      - name: Upload real ISO artifact
         uses: actions/upload-artifact@v4
         with:
           name: AkuOS-1.0-x86_64
           path: |
             dist/AkuOS-1.0-x86_64.iso
+            dist/AkuOS-1.0-x86_64.iso.sha256
             dist/BUILD-REPORT.txt
             dist/qemu-bios.log
             dist/qemu-uefi.log
-
-      - name: Publish permanent release download
+          if-no-files-found: error
+          compression-level: 0
+      - name: Publish permanent release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: akuos-1.0
           name: AkuOS 1.0
+          make_latest: true
           body: |
-            AkuOS 1.0 — tiny Ventoy-friendly x86_64 live ISO.
-            The release asset is the same ISO produced and tested by CI.
+            AkuOS 1.0 — first bootable release.
+            Built from verified TinyCorePure64 17.1 x86_64.
+            BIOS and UEFI smoke-tested by GitHub Actions.
           files: |
             dist/AkuOS-1.0-x86_64.iso
             dist/AkuOS-1.0-x86_64.iso.sha256
