@@ -76,3 +76,17 @@ jobs:
             dist/AkuOS-1.0-x86_64.iso
             dist/BUILD-REPORT.txt
             dist/qemu-boot.log
+
+      - name: Publish permanent release download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: akuos-1.0
+          name: AkuOS 1.0
+          body: |
+            AkuOS 1.0 — tiny Ventoy-friendly x86_64 live ISO.
+            The release asset is the same ISO produced and tested by CI.
+          files: |
+            dist/AkuOS-1.0-x86_64.iso
+            dist/AkuOS-1.0-x86_64.iso.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
