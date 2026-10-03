@@ -76,37 +76,7 @@ button:hover{transform:translateY(-1px)}button:active{transform:translateY(1px) 
 <script>
 "use strict";
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const state={busy:false,provider:"puter",files:{"/aku/my-project/index.html":"<!doctype html><html><body style='font-family:system-ui;padding:40px'><h1>Hello from Aku Code</h1><p>Your live preview is ready.</p><script>
-(function(){
- const agentState={active:true,web:false,files:true,preview:true};
- function toolCard(label,detail){
-   const e=document.createElement("div");e.className="actions tool-real";
-   e.innerHTML='<div class="action-head"><span>✦ '+esc(label)+'</span><small class="tool-status">running</small></div><div style="padding:8px 2px;color:#999">'+esc(detail)+'</div>';
-   $("#messages").append(e);scroll();return e;
- }
- window.akuAgent={
-   run:async function(task){
-     const cards=[];
-     if(/@[w./-]+/.test(task)){cards.push(toolCard("Reading workspace","Resolving referenced files")); }
-     if(agentState.web && /web|search|latest|research|internet/i.test(task)){cards.push(toolCard("Web search","Web provider must be configured before a real search can run"));}
-     if(/preview|render|website|html|page|game|code|build|create/i.test(task)){cards.push(toolCard("Workspace action","Generating or updating files")); }
-     cards.forEach(x=>{x.querySelector(".tool-status").textContent="done";x.classList.remove("tool-running")});
-   }
- };
- window.akuMemoryCard=function(){
-   const e=document.createElement("div");e.className="memory-card";
-   const rows=memory.slice(-6).map(m=>'<div class="memory-row"><span>'+esc(m.role)+'</span><span>'+esc(m.text.slice(0,100))+'</span></div>').join("");
-   e.innerHTML="<b>🧠 Conversation memory</b>"+(rows||"<div class='memory-row'>No conversation history yet.</div>")+"<div style='margin-top:8px;color:#888;font-size:11px'>Recent context only; cleared with New Chat.</div>";
-   $("#messages").append(e);scroll();
- };
- const oldSend=window.send;
- if(typeof oldSend==="function"){
-   window.send=async function(){const t=$("#input").value.trim();if(t)await window.akuAgent.run(t);return oldSend();};
- }
- const agentBtn=document.querySelector('[data-nav="Agent"]');
- if(agentBtn)agentBtn.addEventListener("click",()=>{setTimeout(()=>{const p=document.querySelector("#agentPage");if(p&&!p.querySelector(".agent-toolbar")){const bar=document.createElement("div");bar.className="agent-toolbar";bar.innerHTML='<button class="agent-tool active" data-tool="files">📁 Files</button><button class="agent-tool" data-tool="web">⌕ Web</button><button class="agent-tool" data-tool="preview">◇ Preview</button><button class="agent-tool" data-tool="memory">🧠 Memory</button>';p.prepend(bar);bar.onclick=e=>{const b=e.target.closest("[data-tool]");if(!b)return;const k=b.dataset.tool;if(k==="memory"){window.akuMemoryCard();return}agentState[k]=!agentState[k];b.classList.toggle("active",agentState[k]);};}},50)});
-})();
-</script></body></html>"}};
+const state={busy:false,provider:"puter",files:{"/aku/my-project/index.html":"<!doctype html><html><body style='font-family:system-ui;padding:40px'><h1>Hello from Aku Code</h1><p>Your live preview is ready.</p><script></script></body></html>"}};
 let db;
 function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open("aku-code-v1",1);r.onupgradeneeded=()=>{["projects","files","conversations","messages","settings"].forEach(n=>{if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:"id"})})};r.onsuccess=()=>{db=r.result;res(db)};r.onerror=()=>rej(r.error)})}
 function saveFile(path,content){state.files[path]=content;if(!db)return;const tx=db.transaction("files","readwrite");tx.objectStore("files").put({id:path,path,content,updatedAt:Date.now()});$("#saveState").textContent="Saving…";tx.oncomplete=()=>$("#saveState").textContent="✓ Saved locally"}
@@ -235,5 +205,100 @@ openDB().catch(()=>{}).finally(renderPreview);
 
 /* navigation hardening */
 function openSurface(name){selectNav(name)}
+/* Aku Code real agent controller */
+function akuPath(p){
+ p=String(p||"").trim().replace(/^@/,"");
+ if(!p.startsWith("/")) p="/aku/my-project/"+p.replace(/^\.\//,"");
+ return p.replace(/\\/g,"/");
+}
+function akuRefs(text){
+ const a=[]; const r=/@([A-Za-z0-9_./-]+)/g; let m;
+ while((m=r.exec(text))) a.push(akuPath(m[1]));
+ return [...new Set(a)];
+}
+function akuTool(label,detail,status){
+ const e=document.createElement("div"); e.className="actions tool-real";
+ e.innerHTML="<div class=\"action-head\"><span>✦ "+esc(label)+"</span><small class=\"tool-status\">"+esc(status||"running")+"</small></div><div style=\"padding:8px 2px;color:#999\">"+esc(detail||"")+"</div>";
+ $("#messages").append(e); scroll(); return e;
+}
+async function akuRead(path){
+ const p=akuPath(path),e=akuTool("Reading "+p,"Loading from IndexedDB","running");
+ const value=state.files[p]; e.querySelector(".tool-status").textContent=value==null?"failed":"done";
+ return {path:p,content:value};
+}
+async function akuWrite(path,content){
+ const p=akuPath(path),e=akuTool("Writing "+p,"Saving to IndexedDB","running");
+ saveFile(p,content); e.querySelector(".tool-status").textContent="done"; return {path:p};
+}
+async function akuRender(path){
+ const p=akuPath(path),e=akuTool("Rendering preview",p,"running");
+ renderPreview(p); e.querySelector(".tool-status").textContent="done"; return {path:p};
+}
+function akuNormalizeCode(s){
+ let x=String(s||"").replace(/\\r\\n/g,"\\n");
+ x=x.replace(/^\\(?=<!|<\\/)/gm,"");
+ x=x.replace(/\\([:*])/g,"$1");
+ return x;
+}
+function akuParseFiles(text){
+ const out={}; let m;
+ const r=/<<<FILE:\s*(\/aku\/my-project\/[^>]+?)>>>\s*([\\s\\S]*?)<<<END FILE>>>/g;
+ while((m=r.exec(text))) out[akuPath(m[1])]=akuNormalizeCode(m[2].trimEnd());
+ if(Object.keys(out).length)return out;
+ const blocks=[...String(text).matchAll(/```(html|css|javascript|js)\\s*([\\s\\S]*?)```/gi)];
+ for(const b of blocks){const k=b[1].toLowerCase();const p=k==="html"?"/aku/my-project/index.html":k==="css"?"/aku/my-project/styles.css":"/aku/my-project/script.js";out[p]=akuNormalizeCode(b[2].trim());}
+ return out;
+}
+async function akuApplyFiles(files){
+ const names=Object.keys(files).map(p=>p.split("/").pop()); artifact(names);
+ for(const p of Object.keys(files)){await akuWrite(p,files[p]);fileState(p.split("/").pop(),true);}
+ const entry=Object.keys(files).find(p=>p.endsWith("/index.html"))||Object.keys(files)[0];
+ await akuRender(entry); $("#artifactStatus").textContent="Project ready";
+}
+async function akuLoad(){
+ if(!db)return;
+ try{
+  const fs=await new Promise((ok,bad)=>{const tx=db.transaction("files","readonly"),q=tx.objectStore("files").getAll();q.onsuccess=()=>ok(q.result||[]);q.onerror=()=>bad(q.error)});
+  fs.forEach(f=>{if(f.path)state.files[f.path]=f.content});
+  const q=await new Promise((ok,bad)=>{const tx=db.transaction("messages","readonly"),r=tx.objectStore("messages").get("current");r.onsuccess=()=>ok(r.result);r.onerror=()=>bad(r.error)});
+  if(q?.messages){memory.splice(0,memory.length,...q.messages.slice(-40));}
+ }catch(e){console.warn("workspace load",e)}
+}
+function akuSaveMemory(){if(!db)return;try{const tx=db.transaction("messages","readwrite");tx.objectStore("messages").put({id:"current",messages,updatedAt:Date.now()})}catch{}}
+function akuRemember(role,text){memory.push({role,text,at:Date.now()});if(memory.length>40)memory.shift();akuSaveMemory()}
+async function akuAgentSend(){
+ const input=$("#input"),text=input.value.trim();
+ if(state.busy){state.cancelled=true;state.busy=false;$("#send").textContent="↑";return}
+ if(!text)return;
+ state.busy=true;state.cancelled=false;$("#send").textContent="■";input.value="";
+ akuRemember("user",text); addMessage("user",text);
+ const refs=akuRefs(text), lower=text.toLowerCase();
+ const wantsWrite=/create|build|generate|write|edit|change|fix|update|make/.test(lower);
+ const wantsPreview=/preview|render|run|open|website|site|page|html|game/.test(lower);
+ const wantsWeb=/\b(web|search|research|latest|internet|bing)\b/.test(lower);
+ const a=addActions([{kind:"think",label:"Understanding request",sub:"Agent controller"},{kind:refs.length?"file":"think",label:refs.length?"Reading workspace":"Resolving context",sub:refs.length?"Real @file lookup":"No fabricated actions"},{kind:wantsWrite?"edit":"think",label:wantsWrite?"Generating / editing":"Preparing response",sub:"Executing requested workflow"}]);
+ let context="";
+ try{
+  for(const p of refs){const r=await akuRead(p);context+="FILE "+r.path+"\\n"+(r.content==null?"[FILE NOT FOUND]":r.content)+"\\n\\n"}
+  if(wantsWeb){const e=akuTool("Web search","No browser-safe provider configured; no fake results used","not configured");context+="WEB SEARCH unavailable. Do not fabricate results.\\n";}
+  if(state.cancelled)throw Error("cancelled");
+  const reply=addMessage("assistant","");
+  if(wantsWrite && wantsPreview)artifact(["index.html"]);
+  const old=window.akuPuterStream||puterStream;
+  const ok=await old(text,reply,a,context);
+  if(!ok)await localDemo(text,reply,a);
+  akuRemember("assistant",reply.querySelector(".content").textContent);
+ }catch(e){addMessage("assistant",e.message==="cancelled"?"Generation cancelled.":"Agent action failed: "+e.message)}
+ state.busy=false;$("#send").textContent="↑";scroll();
+}
+window.akuPuterStream=puterStream;
+$("#send").onclick=akuAgentSend;
+$("#input").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();akuAgentSend()}};
+$("#web").onclick=()=>{$("#input").value=($("#input").value?"search web for "+$("#input").value:"search web for ");$("#input").focus()};
+$("#menuBtn").type="button";
+$("#menuBtn").onclick=()=>{$("#sidebar").classList.add("mobile-open");$("#backdrop").classList.add("show")};
+$("#backdrop").onclick=()=>{$("#sidebar").classList.remove("mobile-open");$("#backdrop").classList.remove("show")};
+openDB().then(()=>akuLoad()).catch(()=>{}).finally(()=>renderPreview());
+
 </script>
 </body></html>
