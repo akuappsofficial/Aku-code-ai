@@ -58,7 +58,7 @@ button:hover{transform:translateY(-1px)}button:active{transform:translateY(1px) 
 <div class="app">
 <aside class="sidebar" id="sidebar">
 <div class="brand"><span class="logo">A</span> Aku Code</div><button class="new" id="newChat">＋ New chat</button>
-<div class="nav"><button class="active">⌂ <span>Chat</span></button><button id="agentBtn">✦ <span>Agent</span></button><button id="filesBtn">▣ <span>Files</span></button><button id="previewBtn">◇ <span>Preview</span></button><button id="settingsBtn">⚙ <span>Settings</span></button></div>
+<div class="nav"><button class="active" data-nav="Chat">⌂ <span>Chat</span></button><button data-nav="Agent">✦ <span>Agent</span></button><button data-nav="Files">▣ <span>Files</span></button><button data-nav="Preview">◇ <span>Preview</span></button><button data-nav="Settings">⚙ <span>Settings</span></button></div>
 <div><div class="side-title">Workspace</div><div class="sideitem">▰ <span>my-project</span></div><div class="sideitem">● <span>Local / IndexedDB</span></div></div>
 <div class="project"><div class="status">LOCAL WORKSPACE</div><div class="sideitem">/aku/my-project/</div></div>
 </aside><div class="backdrop" id="backdrop"></div>
@@ -106,27 +106,98 @@ function hydratePreviewHTML(html){
 function loadPreview(path,push=true){if(!state.files[path]){const clean=path.split("/").pop();path=Object.keys(state.files).find(p=>p.endsWith("/"+clean))||"/aku/my-project/index.html"}preview.path=path;if(push){preview.history=preview.history.slice(0,preview.index+1);preview.history.push(path);preview.index++}$("#previewUrl").textContent=path;$("#previewFile").textContent=path.split("/").pop();$("#browserBack").disabled=preview.index<=0;$("#browserForward").disabled=preview.index>=preview.history.length-1;const b=$("#previewPanel .browser");b.classList.add("loading");const frame=$("#previewFrame");frame.srcdoc=hydratePreviewHTML(state.files[path]||"");frame.onload=()=>b.classList.remove("loading")}
 function renderPreview(path="/aku/my-project/index.html"){loadPreview(path,false);const f=$("#artifactFrame");if(f)f.srcdoc=state.files[path]||state.files["/aku/my-project/index.html"]||""}
 function navigatePreview(href){const next=pagePath(href,location.origin+preview.path.replace("/aku/my-project/","/aku/my-project/"));if(next&&state.files[next]){loadPreview(next,true);return true}return false}
-async function localDemo(text,reply,a){for(let i=0;i<a.items.length;i++){setAction(a,i,"active");await new Promise(r=>setTimeout(r,430));if(i===2&&/html|website|page|site/i.test(text)){const multi=/multiple pages|multi.?page|about page|contact page|home page|pages/i.test(text);const files=multi?["index.html","about.html","contact.html","styles.css","script.js"]:["index.html","styles.css","script.js"];artifact(files);const nav='<nav style="display:flex;gap:18px;justify-content:center;margin:20px 0"><a href="index.html" data-page="index.html">Home</a><a href="about.html" data-page="about.html">About</a><a href="contact.html" data-page="contact.html">Contact</a></nav>';const css="body{margin:0;background:#080a0c;color:#f5f7f8;font-family:system-ui;min-height:100vh}main{text-align:center;padding:28px;max-width:900px;margin:auto}h1{font-size:clamp(42px,10vw,90px);letter-spacing:-.07em;margin:0}p{color:#a9b0b9;line-height:1.7}a{color:#dfff45;text-decoration:none}section{padding:30px 0}";saveFile("/aku/my-project/styles.css",css);saveFile("/aku/my-project/script.js","document.addEventListener('click',e=>{const a=e.target.closest('a[data-page]');if(a){e.preventDefault();parent.postMessage({akuPage:a.dataset.page},'*')}});");const page=(title,body)=>'<!doctype html><html><head><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="styles.css"></head><body>'+nav+'<main><section><h1>'+title+'</h1>'+body+'</section></main></body></html>';saveFile("/aku/my-project/index.html",page("Aku Code","<p>Built as a real multi-page project.</p>"));if(multi){saveFile("/aku/my-project/about.html",page("About","<p>Learn more about this project and the people behind it.</p>"));saveFile("/aku/my-project/contact.html",page("Contact","<p>Get in touch through the contact page.</p>"))}Object.keys(state.files).filter(p=>p.startsWith("/aku/my-project/")).forEach(p=>{const n=p.split("/").pop();if(files.includes(n))fileState(n,true)});renderPreview();$("#artifactStatus").textContent=multi?"Multi-page project ready":"Preview ready"}setAction(a,i,"done")}const c=reply.querySelector(".content"),answer=/multiple pages|multi.?page|about page|contact page|home page|pages/i.test(text)?"Built a multi-page project with separate HTML files plus shared CSS and JavaScript. All pages are stored in the local workspace.":/html|website|page|site/i.test(text)?"I built the first live artifact in the browser workspace. The project is stored locally and the preview is rendered from the virtual filesystem.":"I’m ready. The workspace now has live action status, streaming support, @file context, IndexedDB storage and a responsive preview surface.";for(const ch of answer){c.textContent+=ch;scroll();await new Promise(r=>setTimeout(r,10))}a.wrap.querySelector(".action-title").textContent="✓ Completed"}
-async function puterStream(text,reply,a){try{if(!window.puter?.ai?.chat)throw Error("Puter unavailable");setAction(a,0,"done");setAction(a,1,"active");const stream=await puter.ai.chat(text,{stream:true});setAction(a,1,"done");setAction(a,2,"active");const c=reply.querySelector(".content");for await(const part of stream){const t=typeof part==="string"?part:(part?.text||part?.choices?.[0]?.delta?.content||"");if(t){c.insertAdjacentText("beforeend",t);scroll()}}setAction(a,2,"done");a.wrap.querySelector(".action-title").textContent="✓ Completed";return true}catch(e){console.warn("Puter stream failed",e);return false}}
-async function send(){if(state.busy)return;const input=$("#input"),text=input.value.trim();if(!text)return;state.busy=true;$("#send").textContent="■";input.value="";const u=addMessage("user",text);const reply=addMessage("assistant","");const htmlTask=/html|website|page|site/i.test(text);const items=[{kind:"think",label:"Understanding request",sub:"Preparing task"},{kind:/@\w|file/i.test(text)?"file":"web",label:/@\w|file/i.test(text)?"Reading workspace files":"Preparing model request",sub:/@\w|file/i.test(text)?"Resolving @file references":"Selecting provider"},{kind:htmlTask?"html":"edit",label:htmlTask?"Building HTML artifact":"Preparing response",sub:"Live action"}];const a=addActions(items);if(htmlTask)artifact(/multiple pages|multi.?page|about page|contact page|home page|pages/i.test(text)?["index.html","about.html","contact.html","styles.css","script.js"]:["index.html","styles.css","script.js"]);let ok=false;if(state.provider==="puter")ok=await puterStream(text,reply,a);if(!ok)await localDemo(text,reply,a);state.busy=false;$("#send").textContent="↑";scroll()}
-$("#send").onclick=send;$("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});$$(".prompt").forEach(b=>b.onclick=()=>{$("#input").value=b.textContent;send()});
-$("#newChat").onclick=()=>{selectNav("Chat");$("#messages").scrollTop=0};$("#topPreview").onclick=()=>$("#previewPanel").classList.toggle("open");$("#previewBtn").onclick=()=>{$("#previewPanel").classList.add("open");selectNav("Preview")};$("#agentBtn").onclick=()=>{selectNav("Agent")};$("#web").onclick=()=>{$("#input").value+=" [use web search]";$("#input").focus()};$("#modelBtn").onclick=()=>alert("Provider: Puter.js\nFallback: local demo\nNo private provider key is embedded in this repository.");$("#settingsBtn").onclick=()=>selectNav("Settings");$("#filesBtn").onclick=()=>selectNav("Files");function closeDrawer(){$("#sidebar").classList.remove("mobile-open");$("#backdrop").classList.remove("show")}
-function selectNav(name){
- const btn=Array.from(document.querySelectorAll(".nav button")).find(b=>b.textContent.includes(name));
- if(!btn)return;
- $(".nav button").forEach(b=>b.classList.remove("active"));
- btn.classList.add("active","switching");
- const main=$(".main");
- const surfaces={Agent:$("#agentPage"),Files:$("#filesPage"),Settings:$("#settingsPage")};
- const target=surfaces[name];
- $(".page-surface").forEach(p=>p.classList.remove("active"));
- if(target){target.classList.add("active");main.classList.add("surface-changing");setTimeout(()=>main.classList.remove("surface-changing"),450)}
- else {main.classList.remove("surface-changing");}
- setTimeout(()=>btn.classList.remove("switching"),320);
- if(name==="Files"){const box=$("#fileCards");box.innerHTML=Object.keys(state.files).map(p=>'<div class="surface-card"><h3>▣ '+esc(p.split("/").pop())+'</h3><p>'+esc(p)+'</p></div>').join("")}
- closeDrawer();
+const AI_RULES=[
+"You are Aku Code, a coding/building agent inside a browser workspace.",
+"Follow the user's request exactly. Do not invent tool results, web searches, files, previews, APIs, or successful actions.",
+"When the user asks to create or modify code, actually produce usable code rather than only explaining it.",
+"For generated files, use this exact machine-readable format, one file after another:",
+"<<<FILE: /aku/my-project/path.ext>>>",
+"<complete file contents>",
+"<<<END FILE>>>",
+"Use separate files for multi-page sites. Keep HTML, CSS and JS synchronized.",
+"Use relative links between pages. Put shared styles in styles.css and shared browser logic in script.js when appropriate.",
+"Do not put Markdown fences around FILE blocks.",
+"If no file is requested, answer normally.",
+"If web search is requested but no web-search result is actually supplied to you, explicitly say that live web search is unavailable; never pretend you searched.",
+"Never claim a file was saved, previewed, downloaded, or tested unless Aku Code performed that action."
+].join("\n");
+
+function parseFiles(text){
+ const out={}; const re=/<<<FILE:\s*(\/aku\/my-project\/[^>]+?)>>>\s*([\\s\\S]*?)<<<END FILE>>>/g; let m;
+ while((m=re.exec(text))){out[m[1].trim()]=m[2].trimEnd();}
+ if(Object.keys(out).length)return out;
+ const html=text.match(/\`\`\`html\s*([\\s\\S]*?)\`\`\`/i);
+ const css=text.match(/\`\`\`css\s*([\\s\\S]*?)\`\`\`/i);
+ const js=text.match(/\`\`\`(?:javascript|js)\s*([\\s\\S]*?)\`\`\`/i);
+ if(html)out["/aku/my-project/index.html"]=html[1].trim();
+ if(css)out["/aku/my-project/styles.css"]=css[1].trim();
+ if(js)out["/aku/my-project/script.js"]=js[1].trim();
+ return out;
 }
-$("#menuBtn").onclick=()=>{$("#sidebar").classList.add("mobile-open");$("#backdrop").classList.add("show")};$("#backdrop").onclick=closeDrawer;$(".nav button").forEach(btn=>btn.addEventListener("click",()=>{const label=btn.textContent.trim();if(label.includes("Preview"))$("#previewPanel").classList.add("open");selectNav(label.includes("Chat")?"Chat":label.includes("Agent")?"Agent":label.includes("Files")?"Files":label.includes("Settings")?"Settings":"Preview")}));$("[data-go]").forEach(b=>b.onclick=()=>selectNav(b.dataset.go));$("#previewFrame").addEventListener("load",()=>{try{$("#previewFrame").contentWindow.addEventListener("click",e=>{const a=e.target.closest("a");if(a){const href=a.getAttribute("href");if(navigatePreview(href))e.preventDefault()}})}catch{}});$("#browserBack").onclick=()=>{if(preview.index>0){preview.index--;loadPreview(preview.history[preview.index],false)}};$("#browserForward").onclick=()=>{if(preview.index<preview.history.length-1){preview.index++;loadPreview(preview.history[preview.index],false)}};$("#browserReload").onclick=()=>loadPreview(preview.path,false);window.addEventListener("message",e=>{if(e.data?.akuPage){const p=e.data.akuPage.startsWith("/")?e.data.akuPage:"/aku/my-project/"+e.data.akuPage;if(state.files[p])loadPreview(p,true)}});openDB().catch(()=>{}).finally(renderPreview);
+function writeGeneratedFiles(files){
+ Object.entries(files).forEach(([p,v])=>saveFile(p,v));
+ const names=Object.keys(files).map(p=>p.split("/").pop());
+ if(names.length){
+   artifact(names);
+   names.forEach(n=>fileState(n,true));
+   renderPreview(Object.keys(files).find(p=>p.endsWith("/index.html"))||Object.keys(files)[0]);
+   $("#artifactStatus").textContent=names.filter(n=>n.endsWith(".html")).length>1?"Multi-page project ready":"Project ready";
+ }
+}
+async function localDemo(text,reply,a){
+ for(let i=0;i<a.items.length;i++){setAction(a,i,"active");await new Promise(r=>setTimeout(r,300));}
+ const c=reply.querySelector(".content");
+ c.textContent="Puter AI was unavailable, so no fake AI result was generated. Your request was not fabricated.";
+ a.items.forEach((_,i)=>setAction(a,i,"done")); a.wrap.querySelector(".action-title").textContent="✓ Completed";
+}
+async function puterStream(text,reply,a){
+ try{
+   if(!window.puter?.ai?.chat)throw Error("Puter unavailable");
+   setAction(a,0,"done"); setAction(a,1,"active");
+   const prompt=AI_RULES+"\n\nUSER REQUEST:\n"+text;
+   const stream=await puter.ai.chat(prompt,{stream:true});
+   setAction(a,1,"done"); setAction(a,2,"active");
+   const c=reply.querySelector(".content"); let full="";
+   for await(const part of stream){
+     const t=typeof part==="string"?part:(part?.text||part?.choices?.[0]?.delta?.content||"");
+     if(t){full+=t;c.insertAdjacentText("beforeend",t);scroll();}
+   }
+   setAction(a,2,"done");
+   const generated=parseFiles(full);
+   if(Object.keys(generated).length) writeGeneratedFiles(generated);
+   a.wrap.querySelector(".action-title").textContent="✓ Completed";
+   return true;
+ }catch(e){console.warn("Puter stream failed",e);return false}
+}
+async function send(){
+ if(state.busy)return;
+ const input=$("#input"),text=input.value.trim(); if(!text)return;
+ state.busy=true; $("#send").textContent="■"; input.value="";
+ addMessage("user",text); const reply=addMessage("assistant","");
+ const htmlTask=/html|website|page|site|code|build|create/i.test(text);
+ const items=[
+  {kind:"think",label:"Understanding request",sub:"Applying Aku Code rules"},
+  {kind:/@\\w|file/i.test(text)?"file":"web",label:/@\\w|file/i.test(text)?"Reading workspace files":"Checking request requirements",sub:"No fabricated tool results"},
+  {kind:htmlTask?"html":"edit",label:htmlTask?"Generating code files":"Preparing response",sub:"Keeping files synchronized"}
+ ];
+ const a=addActions(items);
+ let ok=await puterStream(text,reply,a);
+ if(!ok)await localDemo(text,reply,a);
+ state.busy=false;$("#send").textContent="↑";scroll();
+}
+$("#send").onclick=send;
+$("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+$$(".prompt").forEach(b=>b.onclick=()=>{$("#input").value=b.textContent;send()});
+$("#newChat").onclick=()=>{selectNav("Chat");$("#messages").scrollTop=0};
+$("#topPreview").onclick=()=>{$("#previewPanel").classList.toggle("open")};
+$("#web").onclick=()=>{$("#input").value+=" [WEB SEARCH REQUESTED]";$("#input").focus()};
+$("#modelBtn").onclick=()=>alert("Provider: Puter.js\nGeneration rules: enabled\nStructured file output: enabled\nNo private provider key is embedded.");
+function closeDrawer(){$("#sidebar").classList.remove("mobile-open");$("#backdrop").classList.remove("show")}
+document.querySelectorAll(".nav button[data-nav]").forEach(btn=>btn.onclick=()=>selectNav(btn.dataset.nav));
+$("#menuBtn").onclick=()=>{$("#sidebar").classList.add("mobile-open");$("#backdrop").classList.add("show")};
+$("#backdrop").onclick=closeDrawer;
+document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>selectNav(b.dataset.go));
+openDB().catch(()=>{}).finally(renderPreview);
 
 /* navigation hardening */
 function openSurface(name){selectNav(name)}
