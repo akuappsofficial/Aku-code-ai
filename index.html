@@ -205,6 +205,23 @@ openDB().catch(()=>{}).finally(renderPreview);
 
 /* navigation hardening */
 function openSurface(name){selectNav(name)}
+function selectNav(name){
+ const map={Chat:null,Agent:"#agentPage",Files:"#filesPage",Preview:null,Settings:"#settingsPage"};
+ document.querySelectorAll(".nav button[data-nav]").forEach(b=>b.classList.toggle("active",b.dataset.nav===name));
+ $(".main").classList.add("surface-changing");setTimeout(()=>$(".main").classList.remove("surface-changing"),420);
+ document.querySelectorAll(".page-surface").forEach(p=>p.classList.remove("active"));
+ if(name==="Chat"){$("#previewPanel").classList.remove("open");return;}
+ if(name==="Preview"){$("#previewPanel").classList.add("open");return;}
+ const sel=map[name];if(sel){$(sel).classList.add("active");if(name==="Files")refreshFileCards();}
+ closeDrawer();
+}
+function refreshFileCards(){
+ const box=$("#fileCards");if(!box)return;
+ box.innerHTML="";
+ listWorkspaceFilesSafe().forEach(p=>{const d=document.createElement("div");d.className="surface-card";d.innerHTML="<h3>"+esc(p.split("/").pop())+"</h3><p>"+esc(p)+"</p>";box.append(d);});
+}
+function listWorkspaceFilesSafe(){return Object.keys(state.files).sort();}
+
 /* Aku Code real agent controller */
 function akuPath(p){
  p=String(p||"").trim().replace(/^@/,"");
@@ -264,7 +281,7 @@ async function akuLoad(){
   if(q?.messages){memory.splice(0,memory.length,...q.messages.slice(-40));}
  }catch(e){console.warn("workspace load",e)}
 }
-function akuSaveMemory(){if(!db)return;try{const tx=db.transaction("messages","readwrite");tx.objectStore("messages").put({id:"current",messages,updatedAt:Date.now()})}catch{}}
+function akuSaveMemory(){if(!db)return;try{const tx=db.transaction("messages","readwrite");tx.objectStore("messages").put({id:"current",messages:memory,updatedAt:Date.now()})}catch{}}
 function akuRemember(role,text){memory.push({role,text,at:Date.now()});if(memory.length>40)memory.shift();akuSaveMemory()}
 async function akuAgentSend(){
  const input=$("#input"),text=input.value.trim();
