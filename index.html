@@ -54,6 +54,7 @@ button:hover{transform:translateY(-1px)}button:active{transform:translateY(1px) 
 .page-surface{position:absolute;inset:58px 0 0;z-index:8;background:radial-gradient(circle at 50% -20%,#20260d 0,#07080a 34%);padding:28px;overflow:auto;opacity:0;visibility:hidden;pointer-events:none;transform:translateX(24px);transition:opacity .32s var(--ease),transform .42s var(--ease),visibility 0s linear .42s}.page-surface.active{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition-delay:0s}.surface-inner{max-width:1000px;margin:auto}.surface-title{font-size:clamp(40px,7vw,76px);letter-spacing:-.065em;margin:0 0 8px}.surface-sub{color:var(--muted);max-width:650px}.surface-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:26px}.surface-card{border:1px solid var(--line);background:#ffffff05;border-radius:16px;padding:18px;min-height:120px}.surface-card h3{margin:0 0 7px}.surface-card p{margin:0;color:#8e96a1}.back-link{margin-bottom:22px}.main.surface-changing .page-surface.active{animation:surfaceIn .42s var(--ease)}@keyframes surfaceIn{from{opacity:0;transform:translateX(28px);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}@media(max-width:700px){.page-surface{inset:58px 0 0;padding:18px 12px}.surface-grid{grid-template-columns:1fr}}
 
 .agent-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.agent-tool{padding:9px 12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);border-radius:12px;cursor:pointer}.agent-tool.active{border-color:rgba(150,255,80,.5);box-shadow:0 0 24px rgba(150,255,80,.12)}.memory-card,.clarification-card{margin:10px 0;padding:12px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.035)}.memory-card .memory-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;color:#aaa;font-size:12px}.tool-running{animation:toolPulse 1.1s ease-in-out infinite}@keyframes toolPulse{50%{transform:translateX(3px);opacity:.65}}
+/* response formatting + agent controls */.content.md{white-space:normal;line-height:1.7}.md p{margin:0 0 12px}.md strong{font-weight:800;color:#fff}.md em{color:#d8dde5}.md h1,.md h2,.md h3{margin:16px 0 8px;line-height:1.15}.md h1{font-size:24px}.md h2{font-size:20px}.md h3{font-size:17px}.md ul{margin:8px 0 12px;padding-left:22px}.md li{margin:4px 0}.md blockquote{border-left:2px solid var(--accent);margin:10px 0;padding:6px 12px;color:#aeb5bf;background:#ffffff04}.md code.inline{padding:2px 6px;border:1px solid var(--line);background:#090b0e;border-radius:6px;color:#e6eea8;font:12px ui-monospace,monospace}.codeblock{margin:12px 0;border:1px solid #292e36;background:#07090c;border-radius:13px;overflow:hidden}.codehead{height:32px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-bottom:1px solid #20242b;color:#858d99;font-size:11px}.codecopy{padding:4px 8px;border:1px solid #2a3038;border-radius:7px;color:#9ea6b1}.codeblock pre{margin:0;padding:13px;overflow:auto;white-space:pre;color:#e9edf2;font:12px/1.65 ui-monospace,monospace}.agent-mode-on{background:#dfff4514!important;color:#efffc0!important;border:1px solid #dfff4570!important}.agent-tool.selected{background:#dfff4514;border-color:#dfff4570;color:#efffc0}
 </style>
 </head>
 <body>
@@ -344,5 +345,49 @@ $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("mobile-open");$("#backdr
 $("#backdrop").onclick=()=>{$("#sidebar").classList.remove("mobile-open");$("#backdrop").classList.remove("show")};
 openDB().then(()=>akuLoad()).catch(()=>{}).finally(()=>renderPreview());
 
+/* Final formatting + functional mode selection */
+state.agentMode=false;state.webMode=false;
+function escapeHTML(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+function renderMarkdown(src){
+ let s=String(src??"").replace(/\r\n/g,"\n");
+ const fence=String.fromCharCode(96).repeat(3),stash=[];
+ const fr=new RegExp(fence+"([\\w+-]*)\\n?([\\s\\S]*?)"+fence,"g");
+ s=s.replace(fr,(m,lang,code)=>{const id=stash.length;stash.push("<div class=\"codeblock\"><div class=\"codehead\"><span>"+escapeHTML(lang||"code")+"</span><button class=\"codecopy\" data-copy=\""+id+"\">Copy</button></div><pre>"+escapeHTML(code.replace(/\\n$/,""))+"</pre></div>");return "\\uE000"+id+"\\uE001";});
+ s=escapeHTML(s);
+ s=s.replace(/^### (.+)$/gm,"<h3>$1</h3>").replace(/^## (.+)$/gm,"<h2>$1</h2>").replace(/^# (.+)$/gm,"<h1>$1</h1>");
+ s=s.replace(/^> (.+)$/gm,"<blockquote>$1</blockquote>");
+ s=s.replace(/^(?:- |\\* )(.+)$/gm,"<li>$1</li>");
+ s=s.replace(/\\*\\*(.+?)\\*\\*/g,"<strong>$1</strong>").replace(/__(.+?)__/g,"<strong>$1</strong>");
+ s=s.replace(/\\*([^*\\n]+)\\*/g,"<em>$1</em>").replace(/`([^`\\n]+)`/g,"<code class=\"inline\">$1</code>");
+ s=s.split(/\\n\\n+/).map(x=>/^<(?:h[1-3]|blockquote|li)/.test(x)?x:"<p>"+x.replace(/\\n/g,"<br>")+"</p>").join("");
+ s=s.replace(/\\uE000(\\d+)\\uE001/g,(m,i)=>stash[Number(i)]);return s;
+}
+function formatReply(el,text){el.classList.add("md");el.innerHTML=renderMarkdown(text);el.querySelectorAll("[data-copy]").forEach(b=>b.onclick=async()=>{const p=b.closest(".codeblock")?.querySelector("pre");if(!p)return;try{await navigator.clipboard.writeText(p.textContent);b.textContent="Copied"}catch{b.textContent="Select & copy"}setTimeout(()=>b.textContent="Copy",1000)})}
+function setAgentMode(on){state.agentMode=!!on;const b=$("#agentMode");if(b){b.classList.toggle("agent-mode-on",state.agentMode);b.textContent=state.agentMode?"✦ Agent ON":"✦ Agent"}$("#modelBtn").textContent=state.agentMode?"✦ Agent · Puter":"✦ Auto · Puter"}
+function setWebMode(on){state.webMode=!!on;const b=$("#web");if(b){b.classList.toggle("agent-mode-on",state.webMode);b.textContent=state.webMode?"⌕ Web ON":"⌕ Web"}}
+$("#agentMode").onclick=()=>setAgentMode(!state.agentMode);$("#web").onclick=()=>setWebMode(!state.webMode);
+async function formattedSend(){
+ if(state.busy)return;const input=$("#input"),text=input.value.trim();if(!text)return;
+ state.busy=true;state.cancelled=false;$("#send").textContent="■";input.value="";remember("user",text);addMessage("user",text);
+ const lower=text.toLowerCase(),refs=akuRefs(text),webWanted=state.webMode||/\\b(web|search|research|latest|internet|bing)\\b/.test(lower),writeWanted=/\\b(create|build|generate|write|edit|change|fix|update|make)\\b/.test(lower);
+ const reply=addMessage("assistant",""),agent=state.agentMode;let a=null,context="";
+ if(agent)a=addActions([{kind:"think",label:"Thinking",sub:"Understanding request and previous context"},{kind:refs.length?"file":"think",label:refs.length?"Reading workspace":"Planning",sub:refs.length?"Resolving @file references":"Choosing the next action"},{kind:webWanted?"web":writeWanted?"edit":"think",label:webWanted?"Web research":writeWanted?"Code action":"Preparing response",sub:"Only reporting actions that actually run"}]);
+ try{
+  if(agent){for(const p of refs){const rr=await akuRead(p);context+="FILE "+rr.path+"\\n"+(rr.content==null?"[FILE NOT FOUND]":rr.content)+"\\n\\n"}
+   if(webWanted){const e=akuTool("Web search","Search provider is not connected in this static build","not configured");context+="WEB SEARCH REQUESTED. No results are available; do not invent them.";e.querySelector(".tool-status").textContent="not configured"}}
+  if(state.cancelled)throw Error("cancelled");
+  const prompt=AI_RULES+"\\n\\n"+(agent?"AGENT MODE: choose and use available actions.":"NORMAL MODE: answer directly.")+"\\n"+context+"\\nCONVERSATION:\\n"+conversationContext()+"\\n\\nUSER:\\n"+text;
+  const stream=await puter.ai.chat(prompt,{stream:true});if(agent&&a){setAction(a,0,"done");setAction(a,1,"active")}
+  const box=reply.querySelector(".content");let full="";
+  for await(const part of stream){if(state.cancelled)break;const t=typeof part==="string"?part:(part?.text||part?.choices?.[0]?.delta?.content||"");if(t){full+=t;box.textContent=full;scroll()}}
+  if(agent&&a){setAction(a,1,"done");setAction(a,2,"active")}
+  const files=agent?akuParseFiles(full):{};
+  if(Object.keys(files).length){box.textContent="";await akuApplyFiles(files);formatReply(box,"Code generated and added to the workspace.");}else formatReply(box,full);
+  if(agent&&a){setAction(a,2,"done");a.wrap.querySelector(".action-title").textContent="✓ Completed"}remember("assistant",full);
+ }catch(e){formatReply(reply.querySelector(".content"),e.message==="cancelled"?"Generation cancelled.":"The AI action failed: "+e.message);if(a)setAction(a,2,"done")}
+ state.busy=false;$("#send").textContent="↑";scroll();
+}
+$("#send").onclick=formattedSend;$("#input").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();formattedSend()}};
+setAgentMode(false);setWebMode(false);
 </script>
 </body></html>
